@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAT15 - Gestion de Tâches Personnalisées</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root { --primary: #2c3e50; --accent: #27ae60; --bg: #f4f7f6; --danger: #e74c3c; --info: #3498db; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; }
+        .container { max-width: 1200px; margin: auto; }
+        header { background: var(--primary); color: white; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 20px; }
+        
+        .import-box { background: #fff; padding: 30px; border-radius: 12px; border: 3px dashed #bdc3c7; text-align: center; margin-bottom: 20px; }
+        .controls { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 20px; position: sticky; top: 10px; z-index: 100; }
+        
+        .dept-group { margin-bottom: 15px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .dept-header { background: #ecf0f1; padding: 12px; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .dept-content { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; padding: 15px; }
+
+        .worker-card { border: 1px solid #ddd; padding: 10px; border-radius: 6px; cursor: pointer; text-align: center; background: #fff; }
+        .worker-card.selected { border: 2px solid var(--accent); background: #eafaf1; }
+
+        .table-section { background: white; padding: 15px; border-radius: 8px; margin-top: 20px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; border: 1px solid #eee; text-align: left; font-size: 13px; }
+        th { background: var(--primary); color: white; }
+
+        .btn { padding: 10px 15px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; display: inline-flex; align-items: center; gap: 5px; }
+        .btn-main { background: var(--accent); flex-grow: 1; justify-content: center; }
+        .btn-reset { background: var(--danger); }
+        .btn-config { background: #9b59b6; }
+
+        .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 95%; max-width: 450px; }
+        select, input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
+
+        .task-item { display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 8px; margin-bottom: 5px; border-radius: 4px; }
+        .badge { padding: 4px 8px; border-radius: 4px; background: var(--info); color: white; font-size: 11px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>NATBERRY 15 - Pointage</h1>
+    </header>
+
+    <div class="import-box" id="importArea">
+        <h2 style="color: var(--primary)">📂 Étape 1 : Charger G-POINTAGE</h2>
+        <input type="file" id="excelInput" accept=".xlsx, .xls" style="display:none" onchange="processExcel(this)">
+        <button class="btn" style="background: var(--primary)" onclick="document.getElementById('excelInput').click()">📁 Sélectionner le fichier Excel</button>
+    </div>
+
+    <div id="appBody" style="display:none">
+        <div class="controls">
+            <button class="btn btn-main" id="assignBtn" onclick="openModal('taskModal')" disabled>✅ Affecter (<span id="count">0</span>)</button>
+            <button class="btn btn-config" onclick="openModal('configModal')">⚙️ Gérer Tâches</button>
+            <button class="btn btn-reset" onclick="location.reload()">❌ Reset</button>
+        </div>
+
+        <div id="groupsArea"></div>
+
+        <div class="table-section">
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <h3>📋 Rapport</h3>
+                <button class="btn" style="background:#e67e22;" onclick="exportData()">📥 Export Excel</button>
+            </div>
+            <table id="resTable">
+                <thead><tr><th>Code</th><th>Nom</th><th>Groupe</th><th>Lieu</th><th>Tâche</th></tr></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="taskModal" class="modal">
+    <div class="modal-content">
+        <h3>Affecter une tâche</h3>
+        <label>📍 Lieu :</label>
+        <select id="selLieu"></select>
+        <label>🛠️ Tâche :</label>
+        <select id="selTache"></select>
+        <button class="btn btn-main" style="width:100%; margin-top:15px" onclick="confirmTasks()">Confirmer</button>
+        <button onclick="closeModal('taskModal')" style="width:100%; border:none; background:none; color:red; margin-top:10px; cursor:pointer">Annuler</button>
+    </div>
+</div>
+
+<div id="configModal" class="modal">
+    <div class="modal-content">
+        <h3>⚙️ Paramètres des Tâches</h3>
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="newTaskName" placeholder="Nom de la tâche (ex: TAILLE)">
+            <button class="btn" style="background:var(--accent)" onclick="addTask()">+</button>
+        </div>
+        <hr>
+        <div id="taskListAdmin" style="max-height: 200px; overflow-y: auto; margin-bottom: 15px;"></div>
+        <button onclick="closeModal('configModal')" style="width:100%; border:none; background:var(--primary); color:white; padding:10px; border-radius:6px; cursor:pointer">Fermer</button>
+    </div>
+</div>
+
+<script>
+    let presentList = [];
+    let selectedIds = new Set();
+    let history = [];
+    // Chargement des tâches depuis le stockage local ou liste par défaut
+    let myTasks = JSON.parse(localStorage.getItem('nat15_task_list')) || ["RECOLTE", "ARACHAGE", "BALANCE", "IRRIGATION", "NETTOYAGE", "QUALITE"];
+
+    function processExcel(input) {
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {range: 5});
+
+            presentList = rawData.map(row => ({
+                code: String(row["Code"] || ""),
+                name: String(row["Nom complet"] || ""),
+                dept: String(row["Département"] || "SANS GROUPE")
+            })).filter(w => w.code !== "" && w.name !== "undefined");
+
+            if(presentList.length > 0) {
+                document.getElementById('importArea').style.display = 'none';
+                document.getElementById('appBody').style.display = 'block';
+                fillSerres();
+                updateTaskSelects();
+                renderUI();
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function fillSerres() {
+        const s = document.getElementById('selLieu');
+        s.innerHTML = '<option value="HORS SERRE">HORS SERRE</option>';
+        for(let i=1; i<=31; i++) {
+            let n = "Serre " + (i < 10 ? "0" + i : i);
+            s.innerHTML += `<option value="${n}">${n}</option>`;
+        }
+    }
+
+    // Mise à jour des listes déroulantes de tâches
+    function updateTaskSelects() {
+        const s = document.getElementById('selTache');
+        s.innerHTML = myTasks.map(t => `<option value="${t}">${t}</option>`).join('');
+        
+        const adminList = document.getElementById('taskListAdmin');
+        adminList.innerHTML = myTasks.map((t, index) => `
+            <div class="task-item">
+                <span>${t}</span>
+                <button onclick="removeTask(${index})" style="background:none; border:none; color:red; cursor:pointer; font-weight:bold;">✕</button>
+            </div>
+        `).join('');
+        localStorage.setItem('nat15_task_list', JSON.stringify(myTasks));
+    }
+
+    function addTask() {
+        const input = document.getElementById('newTaskName');
+        const val = input.value.trim().toUpperCase();
+        if(val && !myTasks.includes(val)) {
+            myTasks.push(val);
+            input.value = '';
+            updateTaskSelects();
+        }
+    }
+
+    function removeTask(index) {
+        if(confirm("Supprimer cette tâche de la liste ?")) {
+            myTasks.splice(index, 1);
+            updateTaskSelects();
+        }
+    }
+
+    function renderUI() {
+        const area = document.getElementById('groupsArea');
+        const depts = [...new Set(presentList.map(p => p.dept))];
+        area.innerHTML = '';
+
+        depts.forEach(d => {
+            const workers = presentList.filter(p => p.dept === d);
+            if(workers.length === 0) return;
+            const div = document.createElement('div');
+            div.className = 'dept-group';
+            div.innerHTML = `
+                <div class="dept-header" onclick="toggleGrp(this)">
+                    <span>📂 ${d} (${workers.length})</span>
+                    <button class="btn" style="background:var(--info); padding:4px 8px; font-size:11px" onclick="checkAll(event, '${d}')">Cocher</button>
+                </div>
+                <div class="dept-content">
+                    ${workers.map(w => `
+                        <div class="worker-card ${selectedIds.has(w.code) ? 'selected' : ''}" onclick="selectMe('${w.code}')">
+                            <strong>${w.code}</strong><br><small>${w.name}</small>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            area.appendChild(div);
+        });
+        updateCount();
+    }
+
+    function selectMe(id) {
+        if(selectedIds.has(id)) selectedIds.delete(id);
+        else selectedIds.add(id);
+        renderUI();
+    }
+
+    function checkAll(e, d) {
+        e.stopPropagation();
+        presentList.filter(p => p.dept === d).forEach(p => selectedIds.add(p.code));
+        renderUI();
+    }
+
+    function updateCount() {
+        document.getElementById('assignBtn').disabled = selectedIds.size === 0;
+        document.getElementById('count').innerText = selectedIds.size;
+    }
+
+    function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    function confirmTasks() {
+        const lieu = document.getElementById('selLieu').value;
+        const tache = document.getElementById('selTache').value;
+        selectedIds.forEach(id => {
+            const idx = presentList.findIndex(p => p.code === id);
+            const w = presentList[idx];
+            history.push({ Code: w.code, Nom: w.name, Groupe: w.dept, Lieu: lieu, Tache: tache });
+            presentList.splice(idx, 1);
+        });
+        selectedIds.clear();
+        document.getElementById('tableBody').innerHTML = history.map(h => 
+            `<tr><td>${h.Code}</td><td>${h.Nom}</td><td>${h.Groupe}</td><td>${h.Lieu}</td><td><span class="badge">${h.Tache}</span></td></tr>`
+        ).reverse().join('');
+        closeModal('taskModal');
+        renderUI();
+    }
+
+    function toggleGrp(el) {
+        const c = el.nextElementSibling;
+        c.style.display = c.style.display === 'none' ? 'grid' : 'none';
+    }
+
+    function exportData() {
+        const ws = XLSX.utils.json_to_sheet(history);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Affectations");
+        XLSX.writeFile(wb, `NAT15_Pointage.xlsx`);
+    }
+</script>
+</body>
+</html>
